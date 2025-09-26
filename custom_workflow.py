@@ -13,6 +13,7 @@ from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
+
 # Initialize the LLM
 llm = init_chat_model("anthropic:claude-3-haiku-20240307")
 
@@ -41,10 +42,12 @@ graph_builder.add_conditional_edges(
 graph_builder.add_edge("tools", "chatbot")
 graph_builder.add_edge(START, "chatbot")
 
-# Add memory/checkpointer
+# Add memory/checkpointer and human-in-the-loop
 from langgraph.checkpoint.memory import InMemorySaver
 memory = InMemorySaver()
-graph = graph_builder.compile(checkpointer=memory)
+
+# Compile with interrupt_before tools - this will pause before executing tools
+graph = graph_builder.compile(checkpointer=memory, interrupt_before=["tools"])
 
 # Test the chatbot with memory
 if __name__ == "__main__":
