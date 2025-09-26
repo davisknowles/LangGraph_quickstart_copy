@@ -1,4 +1,8 @@
+from dotenv import load_dotenv
 from langgraph.prebuilt import create_react_agent
+
+# Load environment variables from .env file
+load_dotenv()
 
 def get_weather(city: str) -> str:  
     """Get weather for a given city."""
