@@ -2,3 +2,4 @@ python-dotenv
 langgraph "langchain[anthropic]"
 langgraph langsmith
 pydantic
+langchain-tavily
