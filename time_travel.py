@@ -7,7 +7,6 @@ from langchain.chat_models import init_chat_model
 llm = init_chat_model("anthropic:claude-3-haiku-20240307")
 
 from typing import Annotated
-
 from langchain_tavily import TavilySearch
 from langchain_core.messages import BaseMessage
 from typing_extensions import TypedDict
@@ -20,6 +19,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 class State(TypedDict):
     messages: Annotated[list, add_messages]
 
+# Create the graph
 graph_builder = StateGraph(State)
 
 tool = TavilySearch(max_results=2)
@@ -30,132 +30,125 @@ def chatbot(state: State):
     return {"messages": [llm_with_tools.invoke(state["messages"])]}
 
 graph_builder.add_node("chatbot", chatbot)
-
 tool_node = ToolNode(tools=[tool])
 graph_builder.add_node("tools", tool_node)
 
-graph_builder.add_conditional_edges(
-    "chatbot",
-    tools_condition,
-)
+graph_builder.add_conditional_edges("chatbot", tools_condition)
 graph_builder.add_edge("tools", "chatbot")
 graph_builder.add_edge(START, "chatbot")
 
+# Compile with memory checkpointer for time travel
 memory = InMemorySaver()
 graph = graph_builder.compile(checkpointer=memory)
 
-config = {"configurable": {"thread_id": "1"}}
+print("="*60)
+print("LANGGRAPH TIME TRAVEL DEMONSTRATION")
+print("="*60)
+
+# Configuration for conversation thread
+config = {"configurable": {"thread_id": "time_travel_demo"}}
+
+print("\n1. FIRST CONVERSATION - Creating checkpoints...")
+print("-" * 40)
+
+# First conversation
 events = graph.stream(
-    {
-        "messages": [
-            {
-                "role": "user",
-                "content": (
-                    "I'm learning LangGraph. "
-                    "Could you do some research on it for me?"
-                ),
-            },
-        ],
-    },
+    {"messages": [{"role": "user", "content": "What is LangGraph?"}]},
     config,
     stream_mode="values",
 )
+
+message_count = 0
 for event in events:
     if "messages" in event:
-        event["messages"][-1].pretty_print()
+        message_count += 1
+        print(f"Message {message_count}: {event['messages'][-1].type} message")
 
-# Add a second conversation to create more checkpoints
-print("\n" + "="*50)
-print("ADDING SECOND CONVERSATION")
-print("="*50)
+print(f"\nFirst conversation completed. Total messages: {message_count}")
 
+print("\n2. SECOND CONVERSATION - Adding more checkpoints...")
+print("-" * 40)
+
+# Second conversation
 events = graph.stream(
-    {
-        "messages": [
-            {
-                "role": "user",
-                "content": (
-                    "Ya that's helpful. Maybe I'll "
-                    "build an autonomous agent with it!"
-                ),
-            },
-        ],
-    },
+    {"messages": [{"role": "user", "content": "How can I build agents with it?"}]},
     config,
     stream_mode="values",
 )
+
 for event in events:
     if "messages" in event:
-        event["messages"][-1].pretty_print()
+        message_count += 1
+        print(f"Message {message_count}: {event['messages'][-1].type} message")
 
-print("\n" + "="*50)
-print("REPLAYING STATE HISTORY")
-print("="*50)
+print(f"\nBoth conversations completed. Total messages: {message_count}")
 
-# Now replay the full state history
-to_replay = None
+print("\n3. TIME TRAVEL - Exploring state history...")
+print("-" * 40)
+
+# Explore state history
+checkpoint_count = 0
+checkpoints_info = []
+
 for state in graph.get_state_history(config):
-    print("Num Messages: ", len(state.values["messages"]), "Next: ", state.next)
-    print("-" * 80)
-    if len(state.values["messages"]) == 6:
-        # We are somewhat arbitrarily selecting a specific state based on the number of chat messages in the state.
-        to_replay = state
+    checkpoint_count += 1
+    info = {
+        'checkpoint': checkpoint_count,
+        'messages': len(state.values["messages"]), 
+        'next': state.next,
+        'config': state.config
+    }
+    checkpoints_info.append(info)
+    print(f"Checkpoint {checkpoint_count}: {info['messages']} messages, Next: {info['next']}")
 
-print("\n" + "="*50)
-print("TIME TRAVEL - RESUMING FROM CHECKPOINT")
-print("="*50)
+print(f"\nFound {checkpoint_count} checkpoints in the conversation history!")
 
-# Resume from the selected checkpoint
-if to_replay:
-    print("Resuming from checkpoint with config:")
-    print("Next:", to_replay.next)
-    print("Config:", to_replay.config)
-    print(f"\nCheckpoint ID: {to_replay.config['configurable']['checkpoint_id']}")
-    print("\nResuming execution from this checkpoint...")
-    print("This demonstrates 'time travel' - we're going back to a previous state")
-    print("and continuing execution from that point!")
-    print("-" * 80)
-    
-    # The checkpoint_id in the to_replay.config corresponds to a state we've persisted to our checkpointer.
-    for event in graph.stream(None, to_replay.config, stream_mode="values"):
-        if "messages" in event:
-            event["messages"][-1].pretty_print()
-else:
-    print("No checkpoint with 6 messages found to replay from.")
+print("\n4. TIME TRAVEL - Resuming from a previous checkpoint...")
+print("-" * 40)
 
-print("\n" + "="*50)
-print("TIME TRAVEL DEMONSTRATION COMPLETE")
-print("="*50)
-print("Key concepts demonstrated:")
-print("1. Every step in the graph is automatically checkpointed")
-print("2. get_state_history() lets you browse all past states")
-print("3. You can resume execution from any checkpoint using its config")
-print("4. This enables 'time travel' - going back and exploring different paths")
-print("5. Useful for debugging, experimentation, and interactive applications")
-
-print("\n" + "="*50)
-print("ADDITIONAL TIME TRAVEL EXAMPLE")
-print("="*50)
-print("Let's try a different approach - resume from a different checkpoint...")
-
-# Find a checkpoint with exactly 2 messages (earlier in the conversation)
-different_checkpoint = None
-for state in graph.get_state_history(config):
-    if len(state.values["messages"]) == 2:
-        different_checkpoint = state
+# Find a checkpoint from the middle of the conversation
+target_checkpoint = None
+for info in checkpoints_info:
+    if info['messages'] == 2:  # After first exchange
+        target_checkpoint = info
         break
 
-if different_checkpoint:
-    print(f"Found checkpoint with 2 messages, next: {different_checkpoint.next}")
-    print("This would be right after the first tool call...")
-    print("If we resumed from here, we could take the conversation in a different direction!")
-    print(f"Checkpoint ID: {different_checkpoint.config['configurable']['checkpoint_id']}")
+if target_checkpoint:
+    print(f"Time traveling to checkpoint with {target_checkpoint['messages']} messages...")
+    print(f"Next node to execute: {target_checkpoint['next']}")
+    print(f"Checkpoint ID: {target_checkpoint['config']['configurable']['checkpoint_id']}")
     
-    # Optional: Uncomment the lines below to actually resume from this earlier checkpoint
-    # print("\nResuming from this earlier checkpoint:")
-    # print("-" * 80)
-    # for event in graph.stream(None, different_checkpoint.config, stream_mode="values"):
-    #     if "messages" in event:
-    #         event["messages"][-1].pretty_print()
+    print("\nResuming execution from this past state:")
+    print("(This demonstrates 'rewinding' the graph to a previous point)")
+    
+    # Resume from the checkpoint - this is the time travel!
+    resumed_events = graph.stream(None, target_checkpoint['config'], stream_mode="values")
+    
+    resumed_count = 0
+    for event in resumed_events:
+        if "messages" in event:
+            resumed_count += 1
+            last_message = event["messages"][-1]
+            print(f"Resumed message {resumed_count}: {last_message.type}")
+            if hasattr(last_message, 'content'):
+                content_preview = str(last_message.content)[:100]
+                print(f"  Content preview: {content_preview}...")
+    
+    print(f"\nTime travel complete! Resumed {resumed_count} messages from the past.")
 else:
-    print("No checkpoint with 2 messages found.")
+    print("No suitable checkpoint found for time travel demonstration.")
+
+print("\n" + "="*60)
+print("TIME TRAVEL CONCEPTS DEMONSTRATED:")
+print("="*60)
+print("✓ Automatic checkpointing of every graph state")
+print("✓ get_state_history() to browse all past states")
+print("✓ Resuming execution from any checkpoint using config")
+print("✓ 'Time travel' - rewinding and exploring different paths")
+print("✓ Useful for debugging, experimentation, and interactive apps")
+print("\nTime travel in LangGraph enables powerful features like:")
+print("- Undoing actions and trying different approaches")
+print("- Debugging by examining intermediate states")
+print("- A/B testing different conversation paths")
+print("- Building interactive applications with branching narratives")
+print("="*60)
