@@ -39,4 +39,5 @@ response = agent.invoke(
 )
 
 print("Full response:", response)
+print("*************")
 print("Structured response:", response.get("structured_response"))
