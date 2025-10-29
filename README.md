@@ -1,6 +1,19 @@
-LangGraph_quickstart
-<img width="1401" height="1490" alt="image" src="https://github.com/user-attachments/assets/f99a3267-fba8-40f0-a307-25aa203570ca" />
-<img width="1397" height="1386" alt="image" src="https://github.com/user-attachments/assets/0d6d2731-d905-4e5c-84b8-62e2cda7b796" />
-<img width="1399" height="448" alt="image" src="https://github.com/user-attachments/assets/da046aab-9a13-4c58-bfa2-6abd5f977abc" />
+Converting LangGraph_quickstart into custom safety-agent 
 
+Workflow:
+User question
+   ↓
+Intent detection (is this a statistical question?)
+   ↓
+If yes → run structured query (e.g., Pandas / SQL / Smartsheet API filter)
+If no → normal RAG (semantic retrieval + LLM summarization)
+   ↓
+Combine the outputs
+   ↓
+LLM formats the result conversationally
 
+Assumptions:
+- Pipeline exists to extract Smartsheet data
+- Smartsheet data loaded into Azure AI search for the RAG vector store and blob storage csv file for Pandas statistical analysiss
+- Start developing with a static query, do not develop front end UI
+- Output result in the terminal
