@@ -2,24 +2,14 @@ from dotenv import load_dotenv
 import os
 import pandas as pd
 from typing import Literal, Optional
-from pydantic import BaseModel
 
 # Load environment variables from .env file
 load_dotenv()
 
 from langchain.chat_models import init_chat_model
-from langgraph.prebuilt import create_react_agent
-from langgraph.checkpoint.memory import InMemorySaver
-
-class SafetyResponse(BaseModel):
-    response: str
-    query_type: Literal["statistical", "semantic"]
-    data_source: Optional[str] = None
-
-checkpointer = InMemorySaver()
 
 model = init_chat_model(
-    "anthropic:claude-3-haiku-20240307",  # Using working model
+    "anthropic:claude-3-haiku-20240307",
     temperature=0
 )
 
@@ -40,8 +30,6 @@ def classify_intent(question: str) -> str:
 
 def search_vector_store(query: str) -> str:
     """Search the Azure AI Search vector store for semantic information."""
-    # TODO: Implement Azure AI Search integration
-    # For now, return a placeholder response
     return f"Semantic search results for: {query}\n[Vector store integration needed - placeholder response]"
 
 def statistical_analysis(query: str) -> str:
@@ -111,10 +99,6 @@ Generate the code:
         else:
             result = "Code executed successfully but no 'result' variable was created."
         
-        # Add some metadata to the result
-        result += f"\n\n[Analysis performed on {len(df)} safety incidents]"
-        result += f"\n[Generated code: {generated_code[:100]}...]"
-        
         return result
         
     except Exception as e:
@@ -128,27 +112,14 @@ Generate the code:
         except:
             return f"Error in statistical analysis: {str(e)}"
 
-def format_response(question: str, query_type: str, raw_result: str) -> str:
-    """Format the final response conversationally."""
-    formatting_prompt = f"""
-    Format this {query_type} query result into a natural, conversational response.
-    
-    Original question: {question}
-    Query type: {query_type}
-    Raw result: {raw_result}
-    
-    Provide a helpful, conversational response that directly answers the user's question.
-    """
-    
-    response = model.invoke(formatting_prompt)
-    return response.content
-
-# Main safety agent tools
 def safety_query_tool(question: str) -> str:
     """Main tool that handles both statistical and semantic safety queries."""
     
+    print(f"Processing question: {question}")
+    
     # Step 1: Classify intent
     query_type = classify_intent(question)
+    print(f"Classified as: {query_type}")
     
     # Step 2: Route to appropriate handler
     if query_type == "statistical":
@@ -158,27 +129,26 @@ def safety_query_tool(question: str) -> str:
         raw_result = search_vector_store(question)
         data_source = "Vector Store"
     
-    # Step 3: Format response
-    formatted_response = format_response(question, query_type, raw_result)
+    # Step 3: Return direct result (no additional LLM formatting to see raw output)
+    return f"Query Type: {query_type}\nData Source: {data_source}\n\nResults:\n{raw_result}"
+
+if __name__ == "__main__":
+    print("=== ENHANCED SAFETY AGENT - LLM-GENERATED PANDAS TESTING ===\n")
     
-    return f"Query Type: {query_type}\nData Source: {data_source}\n\nResponse: {formatted_response}"
-
-# Create the agent
-agent = create_react_agent(
-    model=model,
-    tools=[safety_query_tool],
-    checkpointer=checkpointer
-)
-
-# Test the agent
-# You need to provide a config with thread_id when using checkpointer
-config = {"configurable": {"thread_id": "1"}}
-
-response = agent.invoke(
-    {"messages": [{"role": "user", "content": "count the number of safety incidents by business unit"}]},
-    config=config
-)
-
-print("Full response:", response)
-print("*************")
-print("Structured response:", response.get("structured_response"))
+    # Test with various statistical queries
+    queries = [
+        "Count incidents by business unit",
+        "Show me the worst performing locations",
+        "What are the seasonal trends in incidents?",
+        "Compare electrical vs fall incidents",
+        "How many incidents were resolved this year?",
+        "What are the safety procedures for chemical handling?"  # semantic query
+    ]
+    
+    for i, query in enumerate(queries, 1):
+        print(f"\n{'='*80}")
+        print(f"TEST {i}: {query}")
+        print('='*80)
+        response = safety_query_tool(query)
+        print(response)
+        print("\n")
