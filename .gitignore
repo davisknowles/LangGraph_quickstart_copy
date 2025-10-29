@@ -119,3 +119,8 @@ Thumbs.db
 *.tmp
 *.temp
 *.log
+
+# Safety Data - Contains sensitive information
+sample_safety_data.csv
+*safety_data*.csv
+*.csv
