@@ -3,3 +3,6 @@ langgraph "langchain[anthropic]"
 langgraph langsmith
 pydantic
 langchain-tavily
+pandas
+azure-search-documents
+azure-core
