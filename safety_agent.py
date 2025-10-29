@@ -47,12 +47,21 @@ def search_vector_store(query: str) -> str:
 def statistical_analysis(query: str) -> str:
     """Perform statistical analysis on CSV data using Pandas with LLM-generated code."""
     try:
-        # Load actual CSV data
-        df = pd.read_csv('sample_safety_data.csv', sep='\t')
+        # Load actual CSV data - try comma separator first, then tab
+        try:
+            df = pd.read_csv('sample_safety_data.csv', sep=',')
+            if df.shape[1] == 1:  # If only one column, try tab separator
+                df = pd.read_csv('sample_safety_data.csv', sep='\t')
+        except:
+            df = pd.read_csv('sample_safety_data.csv', sep='\t')
+        
+        # Clean up NULL values
+        df = df.replace('NULL', pd.NA)
         
         # Convert date columns to datetime with error handling
         df['Created'] = pd.to_datetime(df['Created'], errors='coerce')
-        df['Date Identified'] = pd.to_datetime(df['Date Identified'], errors='coerce')
+        if 'Date Identified' in df.columns:
+            df['Date Identified'] = pd.to_datetime(df['Date Identified'], errors='coerce')
         
         # Get column information for the LLM
         column_info = f"""
