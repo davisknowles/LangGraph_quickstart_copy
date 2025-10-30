@@ -3,6 +3,8 @@ import os
 import pandas as pd
 from typing import Literal, Optional
 from pydantic import BaseModel
+from azure.storage.blob import BlobServiceClient
+from io import StringIO
 
 # Load environment variables from .env file
 load_dotenv()
@@ -38,6 +40,70 @@ def classify_intent(question: str) -> str:
     response = model.invoke(classification_prompt)
     return response.content.strip().lower()
 
+def load_data_from_blob() -> pd.DataFrame:
+    """Load safety data from Azure Blob Storage."""
+    try:
+        # Get blob credentials from environment
+        blob_sas_url = os.getenv('blob_SAS_url')
+        
+        if not blob_sas_url:
+            raise ValueError("blob_SAS_url not found in environment variables")
+        
+        print(f"Attempting to connect to blob storage...")
+        
+        # Specific file URL - encode the filename properly
+        import requests
+        from urllib.parse import quote
+        
+        # Extract base URL and SAS token
+        base_url = blob_sas_url.split('?')[0]
+        sas_token = blob_sas_url.split('?')[1] if '?' in blob_sas_url else ''
+        
+        # The exact file name with proper URL encoding
+        filename = os.getenv('blob_file_name')
+        encoded_filename = quote(filename)
+        
+        # Construct the full URL
+        file_url = f"{base_url}/{encoded_filename}?{sas_token}"
+        
+        print(f"Attempting to load: {filename}")
+        print(f"Full URL: {file_url[:80]}...")  # Show first 80 chars for debugging
+        
+        try:
+            response = requests.get(file_url, timeout=60)
+            
+            if response.status_code == 200:
+                print(f"Successfully loaded file: {filename}")
+                
+                # Convert to DataFrame
+                csv_string = response.text
+                df = pd.read_csv(StringIO(csv_string))
+                
+                print(f"Successfully loaded {len(df)} rows from blob: {filename}")
+                print(f"Columns: {df.shape[1]}")
+                print(f"Sample columns: {list(df.columns[:5])}")
+                
+                return df
+            else:
+                print(f"HTTP Error {response.status_code}: {response.text[:200]}...")
+                raise ValueError(f"Failed to download file: HTTP {response.status_code}")
+                
+        except requests.exceptions.RequestException as req_error:
+            print(f"Request error: {str(req_error)}")
+            raise ValueError(f"Request failed: {str(req_error)}")
+        
+    except Exception as e:
+        print(f"Error loading from blob storage: {str(e)}")
+        # Fallback to local file if blob fails
+        try:
+            df = pd.read_csv('sample_safety_data.csv', sep=',')
+            if df.shape[1] == 1:
+                df = pd.read_csv('sample_safety_data.csv', sep='\t')
+            print(f"Fallback: loaded {len(df)} rows from local file")
+            return df
+        except Exception as local_error:
+            raise Exception(f"Both blob and local file loading failed. Blob error: {str(e)}, Local error: {str(local_error)}")
+
 def search_vector_store(query: str) -> str:
     """Search the Azure AI Search vector store for semantic information."""
     # TODO: Implement Azure AI Search integration
@@ -47,19 +113,15 @@ def search_vector_store(query: str) -> str:
 def statistical_analysis(query: str) -> str:
     """Perform statistical analysis on CSV data using Pandas with LLM-generated code."""
     try:
-        # Load actual CSV data - try comma separator first, then tab
-        try:
-            df = pd.read_csv('sample_safety_data.csv', sep=',')
-            if df.shape[1] == 1:  # If only one column, try tab separator
-                df = pd.read_csv('sample_safety_data.csv', sep='\t')
-        except:
-            df = pd.read_csv('sample_safety_data.csv', sep='\t')
+        # Load data from Azure Blob Storage
+        df = load_data_from_blob()
         
         # Clean up NULL values
         df = df.replace('NULL', pd.NA)
         
         # Convert date columns to datetime with error handling
-        df['Created'] = pd.to_datetime(df['Created'], errors='coerce')
+        if 'Created' in df.columns:
+            df['Created'] = pd.to_datetime(df['Created'], errors='coerce')
         if 'Date Identified' in df.columns:
             df['Date Identified'] = pd.to_datetime(df['Date Identified'], errors='coerce')
         
