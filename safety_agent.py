@@ -40,6 +40,30 @@ def classify_intent(question: str) -> str:
     response = model.invoke(classification_prompt)
     return response.content.strip().lower()
 
+def clean_column_headers(df: pd.DataFrame) -> pd.DataFrame:
+    """Clean up column headers by removing BOM, extra spaces, and normalizing names."""
+    # Create a copy to avoid modifying the original
+    df_clean = df.copy()
+    
+    # Clean column names
+    new_columns = []
+    for col in df_clean.columns:
+        # Remove BOM (Byte Order Mark) if present
+        clean_col = col.replace('ï»¿', '')
+        
+        # Remove leading/trailing whitespace
+        clean_col = clean_col.strip()
+        
+        # Optional: You can add more cleaning rules here
+        # For example, normalize spaces or remove special characters
+        
+        new_columns.append(clean_col)
+    
+    df_clean.columns = new_columns
+    
+    print(f"Column headers cleaned. First 5: {list(df_clean.columns[:5])}")
+    return df_clean
+
 def load_data_from_blob() -> pd.DataFrame:
     """Load safety data from Azure Blob Storage."""
     try:
@@ -79,6 +103,9 @@ def load_data_from_blob() -> pd.DataFrame:
                 csv_string = response.text
                 df = pd.read_csv(StringIO(csv_string))
                 
+                # Clean up column headers
+                df = clean_column_headers(df)
+                
                 print(f"Successfully loaded {len(df)} rows from blob: {filename}")
                 print(f"Columns: {df.shape[1]}")
                 print(f"Sample columns: {list(df.columns[:5])}")
@@ -99,6 +126,10 @@ def load_data_from_blob() -> pd.DataFrame:
             df = pd.read_csv('sample_safety_data.csv', sep=',')
             if df.shape[1] == 1:
                 df = pd.read_csv('sample_safety_data.csv', sep='\t')
+            
+            # Clean up column headers for local file too
+            df = clean_column_headers(df)
+            
             print(f"Fallback: loaded {len(df)} rows from local file")
             return df
         except Exception as local_error:
