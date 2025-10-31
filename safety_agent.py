@@ -54,21 +54,13 @@ def load_data_from_blob() -> pd.DataFrame:
         
         print(f"Attempting to connect to blob storage...")
         
-        # Specific file URL - encode the filename properly
+        # Use blob-level SAS URL directly (already contains full file path)
         import requests
-        from urllib.parse import quote
         
-        # Extract base URL and SAS token
-        base_url = blob_sas_url.split('?')[0]
-        sas_token = blob_sas_url.split('?')[1] if '?' in blob_sas_url else ''
+        # Use blob-level SAS URL directly (already contains full file path)
+        file_url = blob_sas_url
         
-        # The exact file name with proper URL encoding
         filename = os.getenv('blob_file_name')
-        encoded_filename = quote(filename)
-        
-        # Construct the full URL
-        file_url = f"{base_url}/{encoded_filename}?{sas_token}"
-        
         print(f"Attempting to load: {filename}")
         print(f"Full URL: {file_url[:80]}...")  # Show first 80 chars for debugging
         
