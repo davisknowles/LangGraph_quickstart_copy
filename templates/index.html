@@ -275,6 +275,122 @@
             transform: translateX(5px);
         }
 
+        /* Chain of thought feed-style interface */
+        .thinking-content {
+            background: linear-gradient(135deg, #f8f9ff 0%, #e8f0ff 100%) !important;
+            border: 1px solid #d0e0ff !important;
+            position: relative;
+            min-height: 80px;
+        }
+
+        .thinking-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e0e8ff;
+            font-size: 0.95em;
+        }
+
+        .thinking-icon {
+            width: 8px;
+            height: 8px;
+            background: #667eea;
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { 
+                opacity: 0.6;
+                transform: scale(1);
+            }
+            50% { 
+                opacity: 1;
+                transform: scale(1.2);
+            }
+        }
+
+        .thinking-steps {
+            margin-top: 5px;
+            display: flex;
+            flex-direction: column;
+            height: 80px; /* Fixed height to show exactly 2 steps */
+            overflow: hidden;
+            position: relative;
+        }
+
+        .thinking-step {
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            transition: all 0.5s ease-in-out;
+            border-left: 3px solid transparent;
+            height: 40px; /* Fixed height for each step */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: absolute;
+            width: calc(100% - 24px);
+        }
+
+        .thinking-step.current {
+            opacity: 1;
+            background: rgba(102, 126, 234, 0.08);
+            border-left-color: #667eea;
+            bottom: 0; /* Current step at bottom */
+            transform: translateY(0);
+        }
+
+        .thinking-step.previous {
+            opacity: 0.5;
+            background: rgba(102, 126, 234, 0.03);
+            border-left-color: rgba(102, 126, 234, 0.3);
+            bottom: 40px; /* Previous step above current */
+            transform: translateY(0);
+        }
+
+        .step-text {
+            color: #333;
+            font-weight: 500;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .step-details {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 2px;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .thinking-step.previous .step-text {
+            color: #666;
+        }
+
+        .thinking-step.previous .step-details {
+            color: #999;
+        }
+
+        /* Clean header text without shimmer effect */
+        .thinking-text {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
         /* Responsive design */
         @media (max-width: 768px) {
             .chat-container {
@@ -295,6 +411,14 @@
                 position: static;
                 transform: none;
                 margin-top: 10px;
+            }
+
+            .thinking-step {
+                font-size: 0.85em;
+            }
+            
+            .step-details {
+                font-size: 0.8em;
             }
         }
     </style>
@@ -426,7 +550,40 @@
             // Set loading state
             isLoading = true;
             document.getElementById('sendBtn').disabled = true;
-            addLoadingMessage();
+            
+            // Start streaming response
+            await streamChatResponse(message);
+            
+            // Reset loading state
+            isLoading = false;
+            document.getElementById('sendBtn').disabled = false;
+        }
+
+        async function streamChatResponse(message) {
+            const messagesContainer = document.getElementById('chatMessages');
+            
+            // Create thinking message container
+            const thinkingDiv = document.createElement('div');
+            thinkingDiv.className = 'message assistant';
+            thinkingDiv.id = 'thinkingMessage';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content thinking-content';
+            contentDiv.innerHTML = `
+                <div class="thinking-header">
+                    <span class="thinking-icon"></span>
+                    <span class="thinking-text">Starting analysis</span>
+                </div>
+                <div class="thinking-steps">
+                    <div class="thinking-step current" style="bottom: 0px; opacity: 1;">
+                        <div class="step-text">Initializing analysis</div>
+                    </div>
+                </div>
+            `;
+            
+            thinkingDiv.appendChild(contentDiv);
+            messagesContainer.appendChild(thinkingDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
             
             try {
                 const response = await fetch('/chat', {
@@ -437,23 +594,133 @@
                     body: JSON.stringify({ message: message })
                 });
                 
-                removeLoadingMessage();
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    addMessage(data.response, false);
-                } else {
-                    const errorData = await response.json();
-                    showError(errorData.error || 'Unknown error occurred');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
                 }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // Keep incomplete line in buffer
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                
+                                if (data.type === 'thinking') {
+                                    updateThinkingStep(data.step, data.details);
+                                } else if (data.type === 'response') {
+                                    // Animate thinking completion and add final response
+                                    const thinkingMsg = document.getElementById('thinkingMessage');
+                                    if (thinkingMsg) {
+                                        // Final completion step
+                                        const thinkingText = thinkingMsg.querySelector('.thinking-text');
+                                        const currentStep = thinkingMsg.querySelector('.thinking-step.current .step-text');
+                                        
+                                        if (thinkingText) {
+                                            thinkingText.textContent = 'Analysis complete';
+                                        }
+                                        if (currentStep) {
+                                            currentStep.textContent = 'Ready to display results';
+                                        }
+                                        
+                                        // Fade out thinking message after showing completion
+                                        setTimeout(() => {
+                                            thinkingMsg.style.opacity = '0';
+                                            thinkingMsg.style.transform = 'translateY(-10px)';
+                                            setTimeout(() => {
+                                                thinkingMsg.remove();
+                                                addMessage(data.response, false);
+                                            }, 300);
+                                        }, 600);
+                                    } else {
+                                        addMessage(data.response, false);
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('Error parsing SSE data:', e);
+                            }
+                        }
+                    }
+                }
+                
             } catch (error) {
-                removeLoadingMessage();
+                console.error('Streaming error:', error);
+                const thinkingMsg = document.getElementById('thinkingMessage');
+                if (thinkingMsg) {
+                    thinkingMsg.remove();
+                }
                 showError('Failed to connect to the server. Please try again.');
-                console.error('Error:', error);
-            } finally {
-                isLoading = false;
-                document.getElementById('sendBtn').disabled = false;
             }
+        }
+
+        function updateThinkingStep(step, details) {
+            const thinkingMsg = document.getElementById('thinkingMessage');
+            if (!thinkingMsg) return;
+            
+            const thinkingText = thinkingMsg.querySelector('.thinking-text');
+            const stepsContainer = thinkingMsg.querySelector('.thinking-steps');
+            
+            // Update header with current step
+            if (thinkingText) {
+                thinkingText.textContent = step;
+            }
+            
+            if (stepsContainer) {
+                // Get existing steps
+                const currentStep = stepsContainer.querySelector('.thinking-step.current');
+                const previousStep = stepsContainer.querySelector('.thinking-step.previous');
+                
+                // Remove any old previous step
+                if (previousStep) {
+                    previousStep.style.opacity = '0';
+                    previousStep.style.transform = 'translateY(-40px)';
+                    setTimeout(() => previousStep.remove(), 300);
+                }
+                
+                // Move current step to previous position
+                if (currentStep) {
+                    currentStep.classList.remove('current');
+                    currentStep.classList.add('previous');
+                    // Animate to previous position (moves up and fades)
+                    setTimeout(() => {
+                        currentStep.style.bottom = '40px';
+                        currentStep.style.opacity = '0.5';
+                    }, 50);
+                }
+                
+                // Create new current step
+                const stepDiv = document.createElement('div');
+                stepDiv.className = 'thinking-step current';
+                stepDiv.innerHTML = `
+                    <div class="step-text">${step}</div>
+                    ${details ? `<div class="step-details">${details}</div>` : ''}
+                `;
+                
+                // Start from below and slide up
+                stepDiv.style.bottom = '-40px';
+                stepDiv.style.opacity = '0';
+                stepsContainer.appendChild(stepDiv);
+                
+                // Animate to current position
+                setTimeout(() => {
+                    stepDiv.style.bottom = '0px';
+                    stepDiv.style.opacity = '1';
+                }, 100);
+            }
+            
+            // Scroll to bottom
+            const messagesContainer = document.getElementById('chatMessages');
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
         function sendExampleMessage(element) {
