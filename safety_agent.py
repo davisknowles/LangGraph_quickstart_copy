@@ -429,15 +429,20 @@ agent = create_react_agent(
     checkpointer=checkpointer
 )
 
-# Test the agent
-# You need to provide a config with thread_id when using checkpointer
-config = {"configurable": {"thread_id": "1"}}
+# Test function for development
+def test_agent():
+    """Test the agent with a sample question."""
+    config = {"configurable": {"thread_id": "test"}}
+    
+    response = agent.invoke(
+        {"messages": [{"role": "user", "content": "count the number of safety incidents by business unit"}]},
+        config=config
+    )
+    
+    print("Full response:", response)
+    print("*************")
+    return response
 
-response = agent.invoke(
-    {"messages": [{"role": "user", "content": "count the number of safety incidents by business unit"}]},
-    config=config
-)
-
-print("Full response:", response)
-print("*************")
-print("Structured response:", response.get("structured_response"))
+# Only run test if this file is executed directly
+if __name__ == "__main__":
+    test_agent()

@@ -123,3 +123,4 @@ Thumbs.db
 # Safety Data - Contains sensitive information
 *hazards*.csv
 *.csv
+*debug*
